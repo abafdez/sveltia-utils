@@ -542,6 +542,54 @@ describe('Test startL10nDebugOverlay()', () => {
     vi.useRealTimers();
   });
 
+  test('shows the strings inside a control whose content ignores the pointer', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      `<button id="labelled" aria-label="${ui.close}"><span id="icon"></span>` +
+        `<span id="label">${app.es.hello}</span></button>`,
+    );
+    overlay = startL10nDebugOverlay({ registry });
+
+    const tooltip = /** @type {HTMLElement} */ (getShadow().querySelector('.tooltip'));
+
+    // The pointer is over the icon, but the event targets the button, as with Sveltia UI
+    document
+      .getElementById('labelled')
+      ?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    expect(tooltip.hidden).toBe(false);
+    expect(tooltip.textContent).toContain('UI · close [aria-label]');
+    expect(tooltip.textContent).toContain('App · hello');
+  });
+
+  test('shows the strings under the pointer inside other elements', () => {
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      `<div id="container"><span id="under">${app.es.hello}</span>` +
+        `<span id="beside">${app.es.bye}</span></div>`,
+    );
+    overlay = startL10nDebugOverlay({ registry });
+
+    const tooltip = /** @type {HTMLElement} */ (getShadow().querySelector('.tooltip'));
+    const under = /** @type {HTMLElement} */ (document.getElementById('under'));
+    const container = /** @type {HTMLElement} */ (document.getElementById('container'));
+
+    vi.spyOn(under, 'getClientRects').mockReturnValue(
+      /** @type {DOMRectList} */ (/** @type {unknown} */ ([new DOMRect(0, 0, 50, 20)])),
+    );
+
+    container.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 10, clientY: 10 }),
+    );
+    expect(tooltip.hidden).toBe(false);
+    expect(tooltip.textContent).toContain('App · hello');
+    expect(tooltip.textContent).not.toContain('App · bye');
+
+    container.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 10 }),
+    );
+    expect(tooltip.hidden).toBe(true);
+  });
+
   test('hides the tooltip when the pointer leaves the window', () => {
     overlay = startL10nDebugOverlay({ registry });
 

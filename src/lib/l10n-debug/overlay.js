@@ -57,6 +57,34 @@ const ATTR_STATUS_ATTR = 'data-l10n-debug-attr';
  */
 const HIDDEN_ATTR = 'data-l10n-debug-hidden';
 /**
+ * Selector matching the elements with marked strings.
+ */
+const MARKED_SELECTOR = `[${TEXT_STATUS_ATTR}], [${ATTR_STATUS_ATTR}]`;
+
+/**
+ * Selector matching the controls the user points at as a whole, such as a button, whose content
+ * can ignore the pointer.
+ */
+const CONTROL_SELECTOR = [
+  'button',
+  'a[href]',
+  'label',
+  'summary',
+  ...[
+    'button',
+    'link',
+    'checkbox',
+    'radio',
+    'switch',
+    'tab',
+    'option',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+  ].map((role) => `[role="${role}"]`),
+].join(', ');
+
+/**
  * Elements whose content is never shown as text.
  */
 const SKIPPED_TAGS = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
@@ -288,6 +316,34 @@ const isRendered = (element) =>
   [...element.getClientRects()].some(({ width, height }) => width > 1 && height > 1);
 
 /**
+ * Find the elements with marked strings the pointer is over. The pointer event can target an
+ * element whose marked content ignores the pointer, like a button whose label has
+ * `pointer-events: none`, so the marked elements inside the target count as well: all of them in a
+ * control such as a button, or those under the pointer elsewhere.
+ * @param {Element} target Element the pointer event is targeted at.
+ * @param {number} x Horizontal position of the pointer in the viewport.
+ * @param {number} y Vertical position of the pointer in the viewport.
+ * @returns {Element[]} Elements, in document order.
+ */
+const findHoveredElements = (target, x, y) => {
+  const control = target.closest(CONTROL_SELECTOR);
+  const ancestor = target.closest(MARKED_SELECTOR);
+
+  const descendants = [...(control ?? target).querySelectorAll(MARKED_SELECTOR)].filter(
+    (element) =>
+      !!control ||
+      [...element.getClientRects()].some(
+        ({ left, right, top, bottom }) => x >= left && x <= right && y >= top && y <= bottom,
+      ),
+  );
+
+  return [...new Set([...(ancestor ? [ancestor] : []), ...descendants])].sort((a, b) =>
+    // eslint-disable-next-line no-bitwise
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+};
+
+/**
  * Check whether the given element is displayed, so its strings can be counted as shown. Unlike
  * {@link isRendered}, this is true for an element hidden with the “visually hidden” technique,
  * whose text screen readers read out, but false for one in a closed menu, popover or dialog, which
@@ -516,9 +572,7 @@ const startL10nDebugOverlay = ({
    * Get all the elements with marked strings.
    * @returns {Element[]} Elements.
    */
-  const getMarkedElements = () => [
-    ...root.querySelectorAll(`[${TEXT_STATUS_ATTR}], [${ATTR_STATUS_ATTR}]`),
-  ];
+  const getMarkedElements = () => [...root.querySelectorAll(MARKED_SELECTOR)];
 
   /**
    * Update the counts, the checklist and the list of strings that aren’t rendered visibly, and
@@ -698,26 +752,28 @@ const startL10nDebugOverlay = ({
   });
 
   /**
-   * Show the tooltip for the outlined element under the pointer.
+   * Show the tooltip for the outlined elements under the pointer.
    * @param {PointerEvent} event `pointermove` event.
    */
   const onPointerMove = (event) => {
     const target = event.target instanceof Element ? event.target : null;
 
-    const element =
+    const findings =
       target && !host.contains(target)
-        ? target.closest(`[${TEXT_STATUS_ATTR}], [${ATTR_STATUS_ATTR}]`)
-        : null;
+        ? findHoveredElements(target, event.clientX, event.clientY).flatMap((element) => {
+            const { text, attributes: attrs } = find(element);
 
-    if (!element) {
+            return [...text, ...attrs];
+          })
+        : [];
+
+    if (!findings.length) {
       tooltip.hidden = true;
 
       return;
     }
 
-    const { text, attributes: attrs } = find(element);
-
-    tooltip.replaceChildren(...describeFindings([...text, ...attrs], getActiveLocale()));
+    tooltip.replaceChildren(...describeFindings(findings, getActiveLocale()));
     tooltip.hidden = false;
 
     const { innerWidth, innerHeight } = window;
@@ -846,6 +902,7 @@ export {
   ATTR_STATUS_ATTR,
   createStyles,
   DEFAULT_ATTRIBUTES,
+  findHoveredElements,
   findMarkedStrings,
   getGroupStatus,
   getStatus,
