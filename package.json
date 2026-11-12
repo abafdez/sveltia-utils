@@ -86,6 +86,10 @@
       "types": "./dist/file.d.ts",
       "default": "./dist/file.js"
     },
+    "./l10n-debug": {
+      "types": "./dist/l10n-debug/index.d.ts",
+      "default": "./dist/l10n-debug/index.js"
+    },
     "./misc": {
       "types": "./dist/misc.d.ts",
       "default": "./dist/misc.js"
